@@ -46,7 +46,7 @@ static UIFont *buttonFont = nil;
         _view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
         _blocks = [[NSMutableArray alloc] init];
         _height = kActionSheetTopMargin;
-
+        
         if (title)
         {
             CGSize size = [title sizeWithFont:titleFont
@@ -75,7 +75,7 @@ static UIFont *buttonFont = nil;
     return self;
 }
 
-- (void) dealloc 
+- (void) dealloc
 {
     [_view release];
     [_blocks release];
@@ -118,7 +118,7 @@ static UIFont *buttonFont = nil;
     [self addButtonWithTitle:title color:@"black" block:block atIndex:-1];
 }
 
-- (void)addButtonWithTitle:(NSString *)title block:(void (^)())block 
+- (void)addButtonWithTitle:(NSString *)title block:(void (^)())block
 {
     [self addButtonWithTitle:title color:@"gray" block:block atIndex:-1];
 }
@@ -133,13 +133,119 @@ static UIFont *buttonFont = nil;
     [self addButtonWithTitle:title color:@"black" block:block atIndex:index];
 }
 
-- (void)addButtonWithTitle:(NSString *)title atIndex:(NSInteger)index block:(void (^)())block 
+- (void)addButtonWithTitle:(NSString *)title atIndex:(NSInteger)index block:(void (^)())block
 {
     [self addButtonWithTitle:title color:@"gray" block:block atIndex:index];
 }
 
 - (void)showInView:(UIView *)view
 {
+    [self setupView];
+    
+    UIImageView *modalBackground = [[UIImageView alloc] initWithFrame:_view.bounds];
+    modalBackground.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    modalBackground.image = background;
+    modalBackground.contentMode = UIViewContentModeScaleToFill;
+    [_view insertSubview:modalBackground atIndex:0];
+    [modalBackground release];
+    
+    [BlockBackground sharedInstance].vignetteBackground = _vignetteBackground;
+    [[BlockBackground sharedInstance] addToMainWindow:_view];
+    CGRect frame = _view.frame;
+    frame.origin.y = [BlockBackground sharedInstance].bounds.size.height;
+    frame.size.height = _height + kActionSheetBounce;
+    _view.frame = frame;
+    _view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
+    
+    __block CGPoint center = _view.center;
+    center.y -= _height + kActionSheetBounce;
+    
+    [UIView animateWithDuration:0.4
+                          delay:0.0
+                        options:UIViewAnimationCurveEaseOut
+                     animations:^{
+                         [BlockBackground sharedInstance].alpha = 1.0f;
+                         _view.center = center;
+                     } completion:^(BOOL finished) {
+                         [UIView animateWithDuration:0.1
+                                               delay:0.0
+                                             options:UIViewAnimationOptionAllowUserInteraction
+                                          animations:^{
+                                              center.y += kActionSheetBounce;
+                                              _view.center = center;
+                                          } completion:nil];
+                     }];
+    
+    [self retain];
+}
+
+- (void)showFromRect:(CGRect)showFrame inView:(UIView*)view animated:(BOOL)animated {
+    NSAssert([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad, @"This method required iPad");
+    
+    [self setupView];
+    
+    UIViewController* controller = [[[UIViewController alloc] initWithNibName:nil bundle:nil] autorelease];
+    [controller.view addSubview:_view];
+    controller.view.frame = CGRectMake(0, 0, 320, _height);
+    _view.frame = CGRectMake(0, 0, 320, _height);
+    
+    self.popOverController = [[[UIPopoverController alloc] initWithContentViewController:controller] autorelease];
+    [self.popOverController setPopoverContentSize:CGSizeMake(320, _height)];
+    [self.popOverController presentPopoverFromRect:showFrame
+                                            inView:view
+                          permittedArrowDirections:UIPopoverArrowDirectionAny
+                                          animated:animated];
+    [self retain];
+}
+
+- (void)dismissWithClickedButtonIndex:(NSInteger)buttonIndex animated:(BOOL)animated
+{
+    if (buttonIndex >= 0 && buttonIndex < [_blocks count])
+    {
+        id obj = [[_blocks objectAtIndex: buttonIndex] objectAtIndex:0];
+        if (![obj isEqual:[NSNull null]])
+        {
+            ((void (^)())obj)();
+        }
+    }
+    
+    // if using popover
+    if (self.popOverController) {
+        [[NSNotificationCenter defaultCenter] removeObserver:self];
+        [self.popOverController dismissPopoverAnimated:animated];
+        self.popOverController = nil;
+        [_view release]; _view = nil;
+        [self autorelease];
+        return;
+    }
+    
+    if (animated)
+    {
+        CGPoint center = _view.center;
+        center.y += _view.bounds.size.height;
+        [UIView animateWithDuration:0.4
+                              delay:0.0
+                            options:UIViewAnimationCurveEaseIn
+                         animations:^{
+                             _view.center = center;
+                             [[BlockBackground sharedInstance] reduceAlphaIfEmpty];
+                         } completion:^(BOOL finished) {
+                             [[BlockBackground sharedInstance] removeView:_view];
+                             [_view release]; _view = nil;
+                             [self autorelease];
+                         }];
+    }
+    else
+    {
+        [[BlockBackground sharedInstance] removeView:_view];
+        [_view release]; _view = nil;
+        [self autorelease];
+    }
+}
+
+#pragma mark - Private
+
+- (void) setupView {
     NSUInteger i = 1;
     for (NSArray *block in _blocks)
     {
@@ -171,82 +277,11 @@ static UIFont *buttonFont = nil;
         [_view addSubview:button];
         _height += kActionSheetButtonHeight + kActionSheetBorder;
     }
-    
-    UIImageView *modalBackground = [[UIImageView alloc] initWithFrame:_view.bounds];
-    modalBackground.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    modalBackground.image = background;
-    modalBackground.contentMode = UIViewContentModeScaleToFill;
-    [_view insertSubview:modalBackground atIndex:0];
-    [modalBackground release];
-    
-    [BlockBackground sharedInstance].vignetteBackground = _vignetteBackground;
-    [[BlockBackground sharedInstance] addToMainWindow:_view];
-    CGRect frame = _view.frame;
-    frame.origin.y = [BlockBackground sharedInstance].bounds.size.height;
-    frame.size.height = _height + kActionSheetBounce;
-    _view.frame = frame;
-    _view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
-
-    __block CGPoint center = _view.center;
-    center.y -= _height + kActionSheetBounce;
-    
-    [UIView animateWithDuration:0.4
-                          delay:0.0
-                        options:UIViewAnimationCurveEaseOut
-                     animations:^{
-                         [BlockBackground sharedInstance].alpha = 1.0f;
-                         _view.center = center;
-                     } completion:^(BOOL finished) {
-                         [UIView animateWithDuration:0.1
-                                               delay:0.0
-                                             options:UIViewAnimationOptionAllowUserInteraction
-                                          animations:^{
-                                              center.y += kActionSheetBounce;
-                                              _view.center = center;
-                                          } completion:nil];
-                     }];
-    
-    [self retain];
-}
-
-- (void)dismissWithClickedButtonIndex:(NSInteger)buttonIndex animated:(BOOL)animated 
-{
-    if (buttonIndex >= 0 && buttonIndex < [_blocks count])
-    {
-        id obj = [[_blocks objectAtIndex: buttonIndex] objectAtIndex:0];
-        if (![obj isEqual:[NSNull null]])
-        {
-            ((void (^)())obj)();
-        }
-    }
-    
-    if (animated)
-    {
-        CGPoint center = _view.center;
-        center.y += _view.bounds.size.height;
-        [UIView animateWithDuration:0.4
-                              delay:0.0
-                            options:UIViewAnimationCurveEaseIn
-                         animations:^{
-                             _view.center = center;
-                             [[BlockBackground sharedInstance] reduceAlphaIfEmpty];
-                         } completion:^(BOOL finished) {
-                             [[BlockBackground sharedInstance] removeView:_view];
-                             [_view release]; _view = nil;
-                             [self autorelease];
-                         }];
-    }
-    else
-    {
-        [[BlockBackground sharedInstance] removeView:_view];
-        [_view release]; _view = nil;
-        [self autorelease];
-    }
 }
 
 #pragma mark - Action
 
-- (void)buttonClicked:(id)sender 
+- (void)buttonClicked:(id)sender
 {
     /* Run the button's block */
     int buttonIndex = [sender tag] - 1;

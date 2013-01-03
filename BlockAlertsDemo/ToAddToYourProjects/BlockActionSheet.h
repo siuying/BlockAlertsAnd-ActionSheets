@@ -17,6 +17,7 @@
 
 @property (nonatomic, readonly) UIView *view;
 @property (nonatomic, readwrite) BOOL vignetteBackground;
+@property (nonatomic, strong) UIPopoverController* popOverController;
 
 + (id)sheetWithTitle:(NSString *)title;
 
@@ -31,6 +32,7 @@
 - (void)addButtonWithTitle:(NSString *) title atIndex:(NSInteger)index block:(void (^)()) block;
 
 - (void)showInView:(UIView *)view;
+- (void)showFromRect:(CGRect)showFrame inView:(UIView*)view animated:(BOOL)animated;
 
 - (NSUInteger)buttonCount;
 
